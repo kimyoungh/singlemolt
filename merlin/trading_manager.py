@@ -18,7 +18,7 @@ import pandas as pd
 import ctypes
 import pdb
 
-from merlin.configs_secret import account_info
+from merlin.cfg.configs_secret import account_info
 
 locale.setlocale(locale.LC_ALL, 'ko_KR')
 
