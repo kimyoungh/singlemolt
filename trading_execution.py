@@ -12,10 +12,8 @@ import datetime
 import numpy as np
 import pandas as pd
 
-from stock_auto_trading.trading_manager import TradingManager
-from stock_auto_trading.configs import trading_config
-
-import pdb
+from merlin.trading_manager import TradingManager
+from merlin.cfg.configs import trading_config
 
 
 class TradingExecution:
