@@ -9,10 +9,9 @@ import datetime
 import numpy as np
 import pandas as pd
 
-from stock_auto_trading.configs_secret import account_info
-from stock_auto_trading.configs import market_codes
-from stock_auto_trading.configs import trading_config
-from stock_auto_trading.trading_manager import TradingManager
+from merlin.cfg.configs_secret import account_info
+from merlin.cfg.configs import market_codes, trading_config
+from merlin.trading_manager import TradingManager
 
 class GetHistData:
     """
@@ -20,9 +19,9 @@ class GetHistData:
     """
 
     def __init__(self, acc_info, load_codes=True,
-                 stocks_req=['A069500', 'A114800', 'A122630',
+                stocks_req=['A069500', 'A114800', 'A122630',
                             'A229200', 'A233740', 'A251340'],
-                 window=20, num_pick=200, targets='stocks'):
+                window=20, num_pick=200, targets='stocks'):
         " initialization "
 
         self.today = datetime.datetime.now()
