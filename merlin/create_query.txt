@@ -1,0 +1,32 @@
+CREATE TABLE `conclusion_series` (
+	`conc_time` DATETIME NOT NULL COMMENT '체결시간',
+	`conc_date` DATE NOT NULL COMMENT '체결날짜',
+	`stock_code` VARCHAR(50) NULL DEFAULT NULL COMMENT '종목코드',
+	`stock_name` VARCHAR(100) NULL DEFAULT NULL COMMENT '종목명',
+	`buy_sell` VARCHAR(50) NULL DEFAULT NULL COMMENT '매수매도',
+	`conc_amount` INT(11) NULL DEFAULT NULL COMMENT '체결수량',
+	`conc_price` FLOAT NULL DEFAULT NULL COMMENT '체결가격',
+	`conc_value` DOUBLE NULL DEFAULT NULL COMMENT '체결금액(체결수량 * 체결가격)',
+	PRIMARY KEY (`conc_time`, `conc_date`)
+)
+COMMENT='일일 체결 정보 시계열'
+COLLATE='utf8_general_ci'
+ENGINE=InnoDB
+;
+
+CREATE TABLE `jango_data` (
+	`trade_date` DATE NOT NULL COMMENT '영업일',
+	`stock_code` VARCHAR(50) NOT NULL COMMENT '종목코드',
+	`stock_name` VARCHAR(100) NULL DEFAULT NULL COMMENT '종목명',
+	`stock_amount` INT(11) NULL DEFAULT NULL COMMENT '잔고수량',
+	`stock_amount_available` INT(11) NULL DEFAULT NULL COMMENT '매도가능',
+	`book_value` DOUBLE NULL DEFAULT NULL COMMENT '장부가',
+	`purchase_value_book_based` DOUBLE NULL DEFAULT NULL COMMENT '매입금액(장부가 기준)',
+	`purchase_value` DOUBLE NULL DEFAULT NULL COMMENT '매수 가격 기준 매입금액',
+	`d2_deposit` DOUBLE NULL DEFAULT NULL COMMENT 'D+2 예수금',
+	PRIMARY KEY (`trade_date`, `stock_code`)
+)
+COMMENT='일일 잔고 데이터'
+COLLATE='utf8_general_ci'
+ENGINE=InnoDB
+;
