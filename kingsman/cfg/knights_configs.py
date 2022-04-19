@@ -5,7 +5,7 @@
     Created on 2022.04.10
 """
 TRADING_BERT_CONFIG = {
-    'factor_num': 24,
+    'factor_num': 10,
     'asset_embeds_map_nlayers': 1,
     'slope': 0.2,
     'dropout': 0.1,
@@ -14,7 +14,4 @@ TRADING_BERT_CONFIG = {
     'nhead': 4,
     'nlayers': 4,
     'activation': 'gelu',
-    'recon_map_nlayers': 1,
-    'comparing_map_nlayers': 1,
-    'overall_comparing_map_nlayers': 1,
 }
