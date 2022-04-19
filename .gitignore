@@ -1,4 +1,3 @@
-*.ipynb
 *.csv
 *.pkl
 *.pq
@@ -6,7 +5,8 @@
 configs_secret.py
 
 raw_data/
-data_processing_notes/
+train_data/
+#data_processing_notes/
 
 .DS_Store
 
