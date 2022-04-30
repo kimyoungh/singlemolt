@@ -85,4 +85,5 @@ GLEN_SCOTIA_TUNE_CONFIG = {
     'num_samples': 5,
     'device': 'cuda',
     'eps': 1e-6,
+    'window': 250,
 }
