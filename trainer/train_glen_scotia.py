@@ -87,7 +87,7 @@ def train(model, optimizer, train_loader, device=None):
     model.train()
 
     for targets in train_loader:
-        features_bw = targets['feathres_bw'].to(device)
+        features_bw = targets['features_bw'].to(device)
         features_rebal = targets['features_rebal'].to(device)
         best_st = targets['best_st'].to(device)
         worst_st = targets['worst_st'].to(device)
@@ -258,8 +258,6 @@ def main():
     config['epoch_size'] = args.epoch_size
     config['batch_size'] = args.batch_size
     config['valid_batch_size'] = args.valid_batch_size
-    config['train_sample_size'] = args.train_sample_size
-    config['valid_sample_size'] = args.valid_sample_size
     config['checkpoint_epoch'] = args.checkpoint_epoch
     config['num_samples'] = args.num_samples
     config['model_name'] = args.model_name
