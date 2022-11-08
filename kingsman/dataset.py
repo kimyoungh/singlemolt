@@ -4,12 +4,504 @@
     @author: Younghyun Kim
     Created on 2022.03.13
 """
+from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass
-from pyexpat import features
+from re import A
 import numpy as np
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
+
+
+class TTDataset(Dataset):
+    """
+        Dataset Class for TT
+    """
+    def __init__(self, factors, actions, regimes, indices):
+        """
+            Initialization
+
+            Args:
+                factors: multifactor scores
+                    * dtype: np.array(float)
+                    * shape: (full_date_num, asset_num, factor_num)
+                actions: action index series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, 1, period_num)
+                regimes: regime series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, regime_num)
+                        * 0: regime up
+                        * 1: regime neutral
+                        * 2: regime down
+                indices: index array
+                    * dtype: np.array(int)
+                    * shape: (indices_num)
+        """
+        self.indices_num, _, self.period_num = actions.shape
+        _, self.asset_num, self.factor_num = factors.shape
+
+        self.factors = factors
+        self.actions = actions.reshape(-1, self.period_num)
+        self.regimes = regimes
+        self.indices = indices
+
+        self.regime_num = regimes.shape[1]
+        self.regime_rng = np.arange(self.regime_num)
+
+        self.regime_idx = defaultdict(np.array)
+
+        for r in self.regime_rng:
+            self.regime_idx[r] = np.argwhere(
+                regimes[:, r] == 1).ravel()
+
+        self.period_rng = np.arange(self.period_num).reshape(-1, 1)
+
+        assert indices.shape[0] == self.indices_num
+        assert self.period_num == 2
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        """
+            get item
+
+            Return:
+                factors: multifactor scores
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, regime_num*2, asset_num, factor_num)
+                actions: action series
+                    * dtype: torch.LongTensor
+                    * shape: (-1, regime_num*2)
+                trading_positions: trading positions
+                    * dtype: torch.LongTensor
+                    * shape: (-1, regime_num*2, asset_num)
+                    * values
+                        * 0: Zero Position
+                        * 1: Long Position
+        """
+        reg = self.regimes[idx].argmax()
+        no_regs = list(set(self.regime_rng).difference([reg]))
+
+        indices = [idx]
+        # pick regimes
+        for r in no_regs:
+            picked = np.random.choice(self.regime_idx[r], 1).item()
+            indices.append(picked)
+
+        fidx = self.indices[indices].reshape(1, -1) + self.period_rng
+
+        factors = torch.FloatTensor(
+            self.factors[fidx].astype(float)).transpose(0, 1).contiguous()
+        factors = factors.view(-1, self.asset_num, self.factor_num)
+
+        actions = torch.LongTensor(self.actions[indices].astype(int))
+
+        tp_next = F.one_hot(actions[:, 0],
+            num_classes=self.asset_num).view(-1, 1, self.asset_num)
+        tp_init = torch.zeros_like(tp_next)
+
+        tp = torch.cat((tp_init, tp_next), dim=1)
+        trading_positions = tp.view(-1, self.asset_num)
+
+        actions = actions.view(-1)
+
+        return factors, actions, trading_positions
+
+
+class BERTTADataset(Dataset):
+    """
+        Dataset Class for BERTTA
+    """
+    def __init__(self, series, tasks):
+        """
+            Initialization
+
+            Args:
+                series: time series of multiple assets
+                    * dtype: np.array
+                    * shape: (series_num, seq_len)
+                tasks: task answers for multiple asset time series
+                    * dtype: np.array
+                    * shape: (series_num, task_num)
+        """
+        if len(series.shape) > 2:
+            series = series.reshape(-1, series.shape[-1])
+
+        if len(tasks.shape) > 2:
+            tasks = tasks.reshape(-1, tasks.shape[-1])
+
+        self.series = series
+        self.tasks = tasks
+
+        self.series_num = series.shape[0]
+        self.seq_len = series.shape[-1]
+        self.task_num = tasks.shape[-1]
+
+    def __len__(self):
+        return self.series_num
+
+    def __getitem__(self, idx):
+        series = torch.FloatTensor(self.series[idx].astype(float))
+        tasks = torch.LongTensor(self.tasks[idx].astype(int))
+
+        return series, tasks
+
+
+class IDTDataset(Dataset):
+    """
+        Dataset Class for IDT
+    """
+    def __init__(self, obs, values, actions, rewards,
+                regimes, indices):
+        """
+            Initialization
+
+            Args:
+                obs: multifactor scores(observations)
+                    * dtype: np.array(float)
+                    * shape:
+                        (full_date_num, stock_num, factor_num)
+                values: value index series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, sample_num, period_num)
+                actions: action index series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, sample_num, period_num)
+                rewards: reward index series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, sample_num, period_num)
+                regimes: regime series
+                    * dtype: np.array(int)
+                    * shape: (indices_num, regime_num)
+                        * 0: regime up
+                        * 1: regime neutral
+                        * 2: regime down
+                indices: index array
+                    * dtype: np.array(int)
+                    * shape: (indices_num)
+        """
+        self.obs = obs
+        self.values = values
+        self.actions = actions
+        self.rewards = rewards
+        self.regimes = regimes
+        self.indices = indices
+
+        self.date_num, self.sample_num, self.period_num = actions.shape
+        self.regime_num = regimes.shape[1]
+        self.regime_rng = np.arange(self.regime_num)
+
+        self.regime_idx = defaultdict(np.array)
+
+        for r in self.regime_rng:
+            self.regime_idx[r] = np.argwhere(
+                regimes[:, r] == 1).ravel()
+
+        self.period_rng = np.arange(self.period_num).reshape(-1, 1)
+
+        assert indices.shape[0] == self.date_num
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx):
+        """
+            get item
+
+            Return:
+                obs: observations
+                    * dtype: torch.FloatTensor
+                    * shape:
+                        (-1, sample_num*regime_num, period_num, stock_num, factor_num)
+                values: values
+                    * dtype: torch.LongTensor
+                    * shape: (-1, sample_num*regime_num, period_num)
+                actions: actions
+                    * dtype: torch.LongTensor
+                    * shape: (-1, sample_num*regime_num, period_num)
+                rewards: rewards
+                    * dtype: torch.LongTensor
+                    * shape: (-1, sample_num*regime_num, period_num)
+        """
+        reg = self.regimes[idx].argmax()
+        no_regs = list(set(self.regime_rng).difference([reg]))
+
+        indices = [idx]
+        # pick regimes
+        for r in no_regs:
+            picked = np.random.choice(self.regime_idx[r], 1).item()
+            indices.append(picked)
+
+        oidx = self.indices[indices].reshape(1, -1) + self.period_rng
+
+        obs = torch.FloatTensor(
+            self.obs[oidx].astype(float)).transpose(0, 1).contiguous()
+        obs = obs.unsqueeze(1).repeat(
+            1, self.sample_num, 1, 1, 1).view(
+                self.sample_num*self.regime_num, self.period_num,
+                obs.shape[-2], obs.shape[-1]).contiguous()
+
+        values = torch.LongTensor(
+            self.values[indices].astype(int)).view(-1, self.period_num)
+        actions = torch.LongTensor(
+            self.actions[indices].astype(int)).view(-1, self.period_num)
+        rewards = torch.LongTensor(
+            self.rewards[indices].astype(int)).view(-1, self.period_num)
+
+        return obs, values, actions, rewards
+
+
+class IPADataset(Dataset):
+    """
+        Dataset Class for IPA
+    """
+    def __init__(self, factors, weights):
+        """
+            Initialization
+
+            Args:
+                factors: multifactors for stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num, factor_num)
+                weights: target portfolio weights
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+        """
+        self.factors = factors
+        self.weights = weights
+
+        self.stock_num = weights.shape[1]
+        self.factor_num = factors.shape[-1]
+
+    def __len__(self):
+        return len(self.factors)
+
+    def __getitem__(self, idx):
+        """
+            get item
+
+            Args:
+                idx: index
+            Return:
+                factors: multifactor scores
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num, factor_num)
+                weights: target portfolio weights
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num, factor_num)
+                port_type_idx: portfolio type index
+                    * dtype: torch.LongTensor
+                    * shape: (-1)
+
+        """
+        factors = self.factors[idx]
+        weights = self.weights[idx]
+
+        factors = torch.tensor(factors.astype(float)).float()
+        weights = torch.tensor(weights.astype(float)).float()
+        port_type_idx = torch.tensor(0)
+
+        return factors, weights, port_type_idx
+
+
+class CrossAssetBERTFinetuningDataset(Dataset):
+    """
+        Dataset Class for Cross Asset BERT Finetuning
+    """
+    def __init__(self, factors, up_targets, down_targets):
+        """
+            Initialization
+
+            Args:
+                factors: multifactors for stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num, factor_num)
+                up_targets: up targets of stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+                down_targets: down targets of stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+        """
+        self.factors = factors
+        self.up_targets = up_targets
+        self.down_targets = down_targets
+
+        self.stock_num = self.factors.shape[1]
+        self.factor_num = self.factors.shape[-1]
+        self.factor_idx = np.arange(self.factor_num)
+
+    def __len__(self):
+        return len(self.factors)
+
+    def __getitem__(self, idx):
+        """
+            getitem
+
+            Args:
+                idx: index
+            Return:
+                factors: multifactors for stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num, factor_num)
+                up_targets: up targets of stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num)
+                down_targets: down targets of stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num)
+        """
+        factors_v = self.factors[idx]
+        up_targets_v = self.up_targets[idx]
+        down_targets_v = self.down_targets[idx]
+
+        factors = torch.FloatTensor(factors_v.astype(float))
+        up_targets = torch.FloatTensor(up_targets_v.astype(float))
+        down_targets = torch.FloatTensor(down_targets_v.astype(float))
+
+        return factors, up_targets, down_targets
+
+
+class DIPADataset(Dataset):
+    """
+        Dataset Class for DIPA
+    """
+    def __init__(self, enc_factors, factors, returns, data_index,
+            trading_period=250):
+        """
+            Initialization
+
+            Args:
+                enc_factors: multifactors for stocks for CrossAssetBERT
+                    * dtype: np.array
+                    * shape: (date_num, enc_stock_num, factor_num)
+                factors: multifactors for stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num, factor_num)
+                returns: returns data
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+                data_index: data index
+                    * dtype: np.array
+                    * shape: (data_length)
+                trading_period: trading period
+                    * default: 250
+        """
+        self.enc_factors = enc_factors
+        self.factors = factors
+        self.returns = returns
+        self.data_index = data_index
+        self.trading_period = trading_period
+
+        self.max_idx = factors.shape[0] - trading_period
+
+        assert data_index.max() <= self.max_idx
+
+    def __len__(self):
+        return len(self.data_index)
+
+    def __getitem__(self, idx):
+        """
+            get item
+        """
+        idx = self.data_index[idx]
+        enc_factors = self.enc_factors[idx:idx+self.trading_period]
+        factors = self.factors[idx:idx+self.trading_period]
+        returns = self.returns[idx:idx+self.trading_period]
+
+        enc_factors = torch.FloatTensor(enc_factors.astype(float))
+        factors = torch.FloatTensor(factors.astype(float))
+        returns = torch.FloatTensor(returns.astype(float))
+
+        return enc_factors, factors, returns
+
+
+class CrossAssetBERTDataset(Dataset):
+    """
+        Dataset Class for Cross Asset BERT
+    """
+    def __init__(self, factors, up_targets, down_targets,
+                market_targets,
+                factor_masking_prob=0.3,
+                masking_prob=0.3, masking=-1):
+        """
+            Initialization
+
+            Args:
+                factors: multifactors for stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num, factor_num)
+                up_targets: up targets of stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+                down_targets: down targets of stocks
+                    * dtype: np.array
+                    * shape: (date_num, stock_num)
+                market_targets: market targets
+                    * dtype: np.array
+                    * shape: (date_num)
+        """
+        self.factors = factors
+        self.up_targets = up_targets
+        self.down_targets = down_targets
+        self.market_targets = market_targets.astype(int)
+
+        self.factor_masking_prob = factor_masking_prob
+        self.masking_prob = masking_prob
+
+        self.factor_masking_num =\
+            int(self.factor_masking_prob * self.factors.shape[-1])
+
+        self.masking = masking
+        self.stock_num = self.factors.shape[1]
+        self.factor_num = self.factors.shape[-1]
+        self.factor_idx = np.arange(self.factor_num)
+
+    def __len__(self):
+        return len(self.factors)
+
+    def __getitem__(self, idx):
+        """
+            getitem
+
+            Args:
+                idx: index
+            Return:
+                factors: multifactors for stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num, factor_num)
+                up_targets: up targets of stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num)
+                down_targets: down targets of stocks
+                    * dtype: torch.FloatTensor
+                    * shape: (-1, stock_num)
+                market_targets: market targets
+                    * dtype: torch.LongTensor
+                    * shape: (-1)
+        """
+        factors_v = deepcopy(self.factors[idx])
+        up_targets_v = self.up_targets[idx]
+        down_targets_v = self.down_targets[idx]
+        market_targets = self.market_targets[idx]
+
+        if self.masking_prob is not None and\
+            np.random.rand() <= self.masking_prob:
+            for i in range(self.stock_num):
+                mask_idx = np.random.choice(
+                    self.factor_idx, self.factor_masking_num,
+                    replace=False)
+                factors_v[i, mask_idx] = self.masking
+
+        factors = torch.FloatTensor(factors_v.astype(float))
+        up_targets = torch.FloatTensor(up_targets_v.astype(float))
+        down_targets = torch.FloatTensor(down_targets_v.astype(float))
+
+        return factors, up_targets, down_targets, market_targets
 
 
 class InvestingStrategyGeneratorDataset(Dataset):
